@@ -1,22 +1,13 @@
+use std::fmt::format;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
 use kd_tree::{ItemAndDistance, KdSlice, KdTree};
 use ndarray::prelude::*;
 
-struct Point {
-    point: [f64; 3],
-    id: usize,
-}
-
-impl kd_tree::KdPoint for Point {
-    type Scalar = f64;
-    type Dim = typenum::U3;
-    fn at(&self, k: usize) -> f64 { self.point[k] }
-}
-
 struct Parameters {
-    max_overlap_distance: f32,
+    max_overlap_distance: f64,
+    correspondences: usize
 }
 
 struct PointCloud {
@@ -34,7 +25,7 @@ impl PointCloud {
         }
     }
 
-    pub fn select_in_range(&self, cloud: &mut PointCloud, range: f32) {
+    pub fn select_in_range(&mut self, cloud: &mut PointCloud, max_range: f64) {
         let sel_idx = self.get_idx_of_selected_points();
         let query_points = self.get_selected_points();
 
@@ -44,18 +35,35 @@ impl PointCloud {
         for query in &query_points {
             nearests.append(&mut tree.nearests(query, 1));
         }
-        let mut file = File::create("selected.xyz").expect("Could not open file");
-        let mut writer = BufWriter::new(file);
-        for pt in nearests {
-            write!(writer, "{} ", pt.item[0]).expect("Unable to write to file");
-            write!(writer, "{} ", pt.item[1]).expect("Unable to write to file");
-            write!(writer, "{}\n", pt.item[2]).expect("Unable to write to file");
-        }
-        /*
-        for idx in sel_idx {
 
-        }*/
-        // Compute distances to nn
+        // ToDo: possible impr. compare to squared dist -> than no sqrt necessary
+        for i in 0..sel_idx.len() {
+            if f64::sqrt(nearests[i].squared_distance) > max_range {
+                self.selected[sel_idx[i]] = false;
+            }
+        }
+    }
+
+    pub fn export_selected_points(&self, name: &str) {
+        let mut file = File::create(name).expect("Could not open file");
+        let mut writer = BufWriter::new(file);
+        for pt in self.get_selected_points() {
+            write!(writer, "{} ", pt[0]).expect("Unable to write to file");
+            write!(writer, "{} ", pt[1]).expect("Unable to write to file");
+            write!(writer, "{}\n", pt[2]).expect("Unable to write to file");
+        }
+    }
+
+    pub(crate) fn select_n_pts(&mut self, n: usize) {
+        let sel_idx = self.get_idx_of_selected_points();
+        if n < sel_idx.len() {
+            self.selected = vec![false; self.points.len()];
+            let dist_idx = Array::<f64, _>::linspace(0., (sel_idx.len() - 1) as f64, n);
+
+            for (i, idx) in dist_idx.iter().enumerate() {
+                self.selected[sel_idx[idx.floor() as usize]] = true;
+            }
+        }
     }
 
     pub fn get_idx_of_selected_points(&self) -> Vec<usize> {
@@ -92,7 +100,8 @@ fn read_xyz_file(path: String) -> Vec<[f64; 3]> {
 
 fn main() {
     let params = Parameters {
-        max_overlap_distance: 1.0
+        max_overlap_distance: 1.0,
+        correspondences: 1000
     };
 
     let p1 = read_xyz_file("bunny1.xyz".to_string());
@@ -104,20 +113,17 @@ fn main() {
     {
         print!("Consider partial overlap of point clouds ...\n");
         fixed.select_in_range(&mut moved, params.max_overlap_distance);
-        /*
-        pc_fix.SelectInRange(pc_mov.X(), max_overlap_distance);
-    if (pc_fix.GetIdxOfSelectedPts().size() == 0)
-    {
-      char buff[200];
-      snprintf(buff, sizeof(buff),
-               "Point clouds do not overlap within max_overlap_distance = %.5f. "
-               "Consider increasing the value of max_overlap_distance.\n",
-               max_overlap_distance);
-      std::string error_msg{buff};
-      throw std::runtime_error(error_msg);
+        if fixed.get_idx_of_selected_points().len() == 0
+        {
+            panic!("Point clouds do not overlap within max_overlap_distance = {}. \
+            Consider increasing the value of max_overlap_distance.", params.max_overlap_distance);
+        }
+        fixed.export_selected_points("initial_selection.xyz");
     }
-        */
-    }
+
+    print!("Select points for correspondences in fixed point cloud ...\n");
+    fixed.select_n_pts(params.correspondences);
+    fixed.export_selected_points(&*format!("select_{}_pts.xyz", params.correspondences));
 
     /*
 
