@@ -7,5 +7,8 @@ edition = "2021"
 
 [dependencies]
 kd-tree = "0.5.0"
-ndarray = "0.15.6"
 typenum = "1.16.0"
+ndarray = '0.15.2'
+ndarray-stats = "0.5.1"
+linfa-linalg = "0.1.0"
+assert_float_eq="1.1.3"
