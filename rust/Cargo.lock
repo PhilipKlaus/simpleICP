@@ -267,6 +267,7 @@ dependencies = [
  "linfa-linalg",
  "ndarray",
  "ndarray-stats",
+ "ordered-float",
  "typenum",
 ]
 
