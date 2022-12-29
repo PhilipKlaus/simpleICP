@@ -20,12 +20,12 @@ impl kd_tree::KdPoint for Item {
 }
 
 pub struct PointCloud {
-    points: Vec<Item>,
+    pub points: Vec<Item>,
     selected: Vec<bool>,
     // Store selection state for every point
-    normals: Array2<f64>,
+    pub normals: Array2<f64>,
     // Store normal for every point
-    planarity: Array1<f64>,
+    pub planarity: Array1<f64>,
 }
 
 // Static methods

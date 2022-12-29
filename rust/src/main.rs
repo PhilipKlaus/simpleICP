@@ -57,7 +57,7 @@ fn read_xyz_file(path: String) -> Vec<Item> {
 
 fn main() {
     let params = Parameters {
-        max_overlap_distance: 0.0,
+        max_overlap_distance: 1.0,
         correspondences: 1000,
         neighbors: 10,
         max_iterations: 100
