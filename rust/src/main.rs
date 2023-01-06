@@ -1,5 +1,5 @@
-mod pointcloud;
-mod corrpts;
+#[macro_use]
+extern crate assert_float_eq;
 
 use std::fmt::format;
 use std::fs::File;
@@ -7,18 +7,18 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 
 use kd_tree::{ItemAndDistance, KdSlice, KdTree};
 use ndarray::prelude::*;
-use crate::corrpts::match_point_clouds;
+
+use crate::corrpts::{match_point_clouds, reject};
 use crate::pointcloud::{Item, PointCloud};
 
-
-#[macro_use]
-extern crate assert_float_eq;
+mod pointcloud;
+mod corrpts;
 
 struct Parameters {
     max_overlap_distance: f64,
     correspondences: usize,
     neighbors: usize,
-    max_iterations: usize
+    max_iterations: usize,
 }
 
 // ToDo: Return Option
@@ -56,11 +56,12 @@ fn read_xyz_file(path: String) -> Vec<Item> {
 }
 
 fn main() {
+
     let params = Parameters {
         max_overlap_distance: 1.0,
         correspondences: 1000,
         neighbors: 10,
-        max_iterations: 100
+        max_iterations: 100,
     };
 
     let p1 = read_xyz_file("bunny1.xyz".to_string());
@@ -88,13 +89,14 @@ fn main() {
     println!("Estimate normals of selected points ...\n");
     fixed.estimate_normals(params.neighbors);
 
-    let h_old:Array2<f64> = Array::eye(4);
-    let h_new:Array2<f64> = Array::from_elem((4, 4), 0.);
-    let d_h:Array2<f64> = Array::from_elem((4, 4), 0.);
+    let h_old: Array2<f64> = Array::eye(4);
+    let h_new: Array2<f64> = Array::from_elem((4, 4), 0.);
+    let d_h: Array2<f64> = Array::from_elem((4, 4), 0.);
 
     println!("Start iterations ...\n");
     for i in 0..params.max_iterations {
-        match_point_clouds(&fixed, &moved);
+        let match_res = match_point_clouds(&fixed, &moved); // planarity, dists
+        reject(&match_res.0, &match_res.1);
     }
 
     /*
