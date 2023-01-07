@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::time::Instant;
 
 use kd_tree::{ItemAndDistance, KdSlice};
 use linfa_linalg::eigh::{EighInto, EigSort};
@@ -65,11 +66,14 @@ impl PointCloud {
         cloud_query: &'a Vec<Item>,
         k: usize,
     ) -> Vec<Vec<ItemAndDistance<'a, Item, f64>>> {
+        let now = Instant::now();
+
         let tree = kd_tree::KdSlice3::sort_by_key(cloud_ref, |item, k| OrderedFloat(item.point[k]));
         let mut nn: Vec<Vec<ItemAndDistance<Item, f64>>> = Vec::new();
         for query in cloud_query {
             nn.push(tree.nearests(query, k));
         }
+        println!("knn_search took: {}", now.elapsed().as_millis());
         nn
     }
 

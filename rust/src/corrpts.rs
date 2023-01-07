@@ -1,6 +1,6 @@
 use std::num::FpCategory::Nan;
 use ndarray::{Array, Array1, Axis};
-use crate::pointcloud::PointCloud;
+use crate::pointcloud::{Item, PointCloud};
 use ndarray_stats::QuantileExt;
 use typenum::N64;
 
@@ -11,6 +11,7 @@ use rawpointer::PointerExt;
 
 use std::cmp::Ordering;
 use std::ptr::copy_nonoverlapping;
+use std::time::Instant;
 
 // Type invariant: Each index appears exactly once
 #[derive(Clone, Debug)]
@@ -166,39 +167,43 @@ impl<A, D> PermuteArray for Array<A, D>
     }
 }
 
+//##################################################################################################
+
 // pc1 == fixed / pc2 == moved
 pub fn match_point_clouds(pc1: &PointCloud, pc2: &PointCloud) -> (Array1<f64>, Array1<f64>) {
+    let now = Instant::now();
+
     let pts_sel_pc1 = pc1.get_selected_points();
     let mut pts_sel_pc2 = pc2.get_selected_points();
 
     let idx_pc1 = pc1.get_idx_of_selected_points();
-    let mut idx_pc2: Vec<usize> = vec![];
 
     let nn = PointCloud::knn_search(&mut pts_sel_pc2, &pts_sel_pc1, 1);
-
-    for nn_res in nn.iter() {
-        idx_pc2.push(nn_res[0].item.id);
+    let mut pc2_nn_pts: Vec<Item> = Vec::with_capacity(nn.len());
+    for (idx, nn_res) in nn.iter().enumerate() {
+        pc2_nn_pts.push(*nn_res[0].item);
     }
 
     let planarity = pc1.planarity.select(Axis(0), &idx_pc1);
-    let dists = dist_between_clouds(pc1, pc2, &idx_pc1, &idx_pc2);
+    let dists = dist_between_point_sets(pc1, &pts_sel_pc1, &pc2_nn_pts);
+    println!("match_point_clouds took: {}", now.elapsed().as_millis());
     (planarity, dists)
 }
 
-fn dist_between_clouds(pc1: &PointCloud, pc2: &PointCloud, idx1: &Vec<usize>, idx2: &Vec<usize>) -> Array1<f64> {
-    let mut dists: Array1<f64> = Array::from_elem((idx1.len()), f64::NAN);
-    for(idx, (i1, i2)) in idx1.iter().zip(idx2.iter()).enumerate() {
-        let x1 = pc1.points[*i1].point[0];
-        let y1 = pc1.points[*i1].point[1];
-        let z1 = pc1.points[*i1].point[2];
+fn dist_between_point_sets(pc1: &PointCloud, p_set1: &Vec<Item>, p_set2: &Vec<Item>) -> Array1<f64> {
+    let mut dists: Array1<f64> = Array::from_elem((p_set1.len()), f64::NAN);
+    for(idx, (p1, p2)) in p_set1.iter().zip(p_set2.iter()).enumerate() {
+        let x1 = p1.point[0];
+        let y1 = p1.point[1];
+        let z1 = p1.point[2];
 
-        let x2 = pc2.points[*i2].point[0];
-        let y2 = pc2.points[*i2].point[1];
-        let z2 = pc2.points[*i2].point[2];
+        let x2 = p2.point[0];
+        let y2 = p2.point[1];
+        let z2 = p2.point[2];
 
-        let nx1 = pc1.normals[[*i1, 0]];
-        let ny1 = pc1.normals[[*i1, 1]];
-        let nz1 = pc1.normals[[*i1, 2]];
+        let nx1 = pc1.normals[[p1.id, 0]];
+        let ny1 = pc1.normals[[p1.id, 1]];
+        let nz1 = pc1.normals[[p1.id, 2]];
 
         dists[[idx]] = (x2 - x1) * nx1 + (y2 - y1) * ny1 + (z2 - z1) * nz1;
     }
@@ -218,6 +223,8 @@ fn get_dists_median(dists: &Array1<f64>) -> f64 {
 
 // https://github.com/rust-ndarray/ndarray/blob/master/examples/sort-axis.rs
 pub(crate) fn reject(planarity: &Array1<f64>, dists: &Array1<f64>) {
+    let now = Instant::now();
+
     let med = get_dists_median(dists);
     /*let keep = dists.iter().enumerate().map(|(idx, d) | {
         return if (abs(d - med) > 3 * sigmad) | (planarity_[i] < min_planarity) {
@@ -229,6 +236,7 @@ pub(crate) fn reject(planarity: &Array1<f64>, dists: &Array1<f64>) {
     })*/
     //let d: Array1<bool> = array![true, false, false, true, true];
     //let s = d.iter().filter(|x| **x).count();
+    println!("reject took: {}", now.elapsed().as_millis());
 }
 
 #[cfg(test)]
