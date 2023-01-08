@@ -72,19 +72,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kd-tree"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee1639edda796a7a5f0def2d81d5eee4b0f421597ce5f7ac791c3bda758ec952"
-dependencies = [
- "num-traits",
- "ordered-float",
- "paste",
- "pdqselect",
- "typenum",
-]
-
-[[package]]
 name = "kdtree"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -197,18 +184,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "paste"
-version = "1.0.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d01a5bd0424d00070b0098dd17ebca6f961a959dead1dbcbbbc1d1cd8d3deeba"
-
-[[package]]
-name = "pdqselect"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7778906d9321dd56cde1d1ffa69a73e59dcf5fda6d366f62727adf2bd4193aee"
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,7 +248,6 @@ name = "simpleicp"
 version = "0.1.0"
 dependencies = [
  "assert_float_eq",
- "kd-tree",
  "kdtree",
  "linfa-linalg",
  "ndarray",

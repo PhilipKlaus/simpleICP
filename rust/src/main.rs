@@ -1,22 +1,17 @@
 #[macro_use]
 extern crate assert_float_eq;
 
-use std::fmt::format;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::time::Instant;
+use std::io::{BufRead, BufReader};
 
-use kd_tree::{ItemAndDistance, KdSlice};
-use kdtree::KdTree;
-use kdtree::ErrorKind;
-use kdtree::distance::squared_euclidean;use ndarray::prelude::*;
-use ordered_float::OrderedFloat;
+use ndarray::prelude::*;
 
 use crate::corrpts::{match_point_clouds, reject};
-use crate::pointcloud::{PointCloud};
+use crate::pointcloud::PointCloud;
 
 mod pointcloud;
 mod corrpts;
+mod permutation;
 
 struct Parameters {
     max_overlap_distance: f64,
@@ -32,8 +27,7 @@ fn read_xyz_file(path: String) -> Vec<[f64; 3]> {
     reader
         .lines()
         .into_iter()
-        .enumerate()
-        .map(|(idx, l)| {
+        .map(|l| {
             let line = l.expect("Could not read line");
             let mut parts = line.split_whitespace();
             let x: f64 = parts
@@ -57,7 +51,6 @@ fn read_xyz_file(path: String) -> Vec<[f64; 3]> {
 }
 
 fn main() {
-
     let params = Parameters {
         max_overlap_distance: 1.0,
         correspondences: 1000,
@@ -65,49 +58,8 @@ fn main() {
         max_iterations: 100,
     };
 
-    let mut p1 = read_xyz_file("bunny1.xyz".to_string());
-    let mut p2 = read_xyz_file("bunny2.xyz".to_string());
-    /*
-    // kd-tree crate: Using Vector of Item
-    let mut p1 = read_xyz_file("bunny1.xyz".to_string());
-    let mut p2 = read_xyz_file("bunny2.xyz".to_string());
-    let now = Instant::now();
-    let tree = kd_tree::KdSlice3::sort_by_key(&mut p1, |item, k| OrderedFloat(item.point[k]));
-    let mut nn: Vec<Vec<ItemAndDistance<Item, f64>>> = Vec::new();
-    for query in p2 {
-        nn.push(tree.nearests(&query, 10));
-    }
-    println!("knn_search took: {}", now.elapsed().as_millis());
-
-    // kd-tree crate: Using Vector of [f64;3]
-    let mut p1 = read_xyz_file_simple("bunny1.xyz".to_string());
-    let mut p2 = read_xyz_file_simple("bunny2.xyz".to_string());
-    let now = Instant::now();
-    let tree: &KdSlice<[f64; 3]> = KdSlice::sort_by_ordered_float(&mut p1);
-    let mut nn: Vec<Vec<ItemAndDistance<[f64; 3], f64>>> = Vec::new();
-    for query in p2 {
-        nn.push(tree.nearests(&query, 10));
-    }
-    println!("knn_search took: {}", now.elapsed().as_millis());
-
-    // Using kdtree crate
-    let dimensions = 3;
-    let mut p1 = read_xyz_file_simple("bunny1.xyz".to_string());
-    let mut p2 = read_xyz_file_simple("bunny2.xyz".to_string());
-    let now = Instant::now();
-
-    let mut kdtree= KdTree::new(dimensions);
-
-    for (idx, p) in p1.iter().enumerate() {
-        kdtree.add(p, idx);
-    }
-
-    let mut nn: Vec<Vec<(f64, &usize)>> =Vec::new();
-    for (idx, query) in p2.iter().enumerate() {
-        nn.push(kdtree.nearest(query, 10, &squared_euclidean).unwrap());
-    }
-    println!("knn_search took: {}", now.elapsed().as_millis());
-    */
+    let p1 = read_xyz_file("bunny1.xyz".to_string());
+    let p2 = read_xyz_file("bunny2.xyz".to_string());
 
     let mut fixed = PointCloud::new(p1);
     let mut moved = PointCloud::new(p2);
@@ -141,22 +93,4 @@ fn main() {
         let match_res = match_point_clouds(&fixed, &moved); // planarity, dists
         reject(&match_res.0, &match_res.1);
     }
-
-    /*
-
-    let a = array![
-                [1.,2.,3.],
-                [4.,5.,6.],
-                [7.,8.,9.],
-                [10.,11.,12.],
-                [13.,14.,15.],
-                [16.,17.,18.],
-                [19.,20.,21.],
-            ];
-
-    println!("{:?}", a);
-
-    let coords:Vec<[f64;3]>= a.into_raw_vec().chunks(3).map(|chunk| [chunk[0], chunk[1], chunk[2]]).collect();
-    let kdtree: KdTree<[f64; 3]> = KdTree::build_by_ordered_float(coords);
-    */
 }
