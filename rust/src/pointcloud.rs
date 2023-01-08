@@ -15,6 +15,17 @@ pub struct NormalRes {
     planarity: f64,
 }
 
+pub struct NNRes {
+    pub(crate) distance: f64,
+    pub(crate) idx: usize,
+}
+
+impl From<(f64, usize)> for NNRes {
+    fn from(value: (f64, usize)) -> Self {
+        NNRes { distance: value.0, idx: value.1 }
+    }
+}
+
 impl Display for NormalRes {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "NormalRes:\nEigenvector: {}\nPlanarity:{}", self.eigenvector, self.planarity)
@@ -31,7 +42,9 @@ pub struct PointCloud {
     pub planarity: Array1<f64>,
 }
 
-// 'Static' PointCloud methods
+//###############################
+//# 'Static' PointCloud methods #
+//###############################
 impl PointCloud {
     pub fn write_cloud_to_file(cloud: Vec<[f64; 3]>, name: &str) {
         let file = File::create(name).expect("Could not open file");
@@ -41,6 +54,33 @@ impl PointCloud {
             write!(writer, "{} ", pt[1]).expect("Unable to write to file");
             write!(writer, "{}\n", pt[2]).expect("Unable to write to file");
         }
+    }
+
+    pub fn knn_search<'a>(
+        cloud_ref: &'a mut Vec<[f64; 3]>,
+        cloud_query: &'a Vec<[f64; 3]>,
+        k: usize,
+    ) -> Vec<Vec<NNRes>> {
+        let now = Instant::now();
+
+        let mut kdtree = KdTree::new(3);
+
+        for (idx, p) in cloud_ref.iter().enumerate() {
+            kdtree.add(p, idx).expect("Could not add point to kdtree");
+        }
+
+        let mut nn: Vec<Vec<NNRes>> = Vec::new();
+        for query in cloud_query.iter() {
+            nn.push(
+                kdtree.nearest(query, k, &squared_euclidean)
+                    .expect("Could not fetch nn for point")
+                    .iter()
+                    .map(|entry| NNRes::from((entry.0, *entry.1)))
+                    .collect()
+            );
+        }
+        println!("knn_search took: {}", now.elapsed().as_millis());
+        nn
     }
 }
 
@@ -55,27 +95,6 @@ impl PointCloud {
         }
     }
 
-    pub fn knn_search<'a>(
-        cloud_ref: &'a mut Vec<[f64; 3]>,
-        cloud_query: &'a Vec<[f64; 3]>,
-        k: usize,
-    ) -> Vec<Vec<(f64, usize)>> {
-        let now = Instant::now();
-
-        let mut kdtree = KdTree::new(3);
-
-        for (idx, p) in cloud_ref.iter().enumerate() {
-            kdtree.add(p, idx).expect("Could not add point to kdtree");
-        }
-
-        let mut nn: Vec<Vec<(f64, usize)>> = Vec::new();
-        for query in cloud_query.iter() {
-            let res: Vec<(f64, &usize)> = kdtree.nearest(query, k, &squared_euclidean).unwrap();
-            nn.push(res.into_iter().map(|entry| (entry.0, *entry.1)).collect());
-        }
-        println!("knn_search took: {}", now.elapsed().as_millis());
-        nn
-    }
 
     pub fn select_in_range(&mut self, cloud: &mut PointCloud, max_range: f64) {
         let sel_idx = self.get_idx_of_selected_points();
@@ -86,7 +105,7 @@ impl PointCloud {
 
         // ToDo: possible impr. compare to squared dist -> than no sqrt necessary
         for i in 0..sel_idx.len() {
-            if f64::sqrt(nn[i][0].0) > max_range {
+            if f64::sqrt(nn[i][0].distance) > max_range {
                 self.selected[sel_idx[i]] = false;
             }
         }
@@ -133,9 +152,9 @@ impl PointCloud {
             let mut x_nn: Array<f64, Ix2> = Array::zeros((neighbors, 3));
 
             for j in 0..neighbors {
-                x_nn[[j, 0]] = self.points[nn[i][j].1][0];
-                x_nn[[j, 1]] = self.points[nn[i][j].1][1];
-                x_nn[[j, 2]] = self.points[nn[i][j].1][2];
+                x_nn[[j, 0]] = self.points[nn[i][j].idx][0];
+                x_nn[[j, 1]] = self.points[nn[i][j].idx][1];
+                x_nn[[j, 2]] = self.points[nn[i][j].idx][2];
             }
 
             let normal = Self::normal_from_neighbors(&mut x_nn);

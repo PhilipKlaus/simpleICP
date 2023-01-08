@@ -24,7 +24,7 @@ pub fn match_point_clouds(pc1: &PointCloud, pc2: &PointCloud) -> (Array1<f64>, A
     let nn = PointCloud::knn_search(&mut pts_sel_pc2, &pts_sel_pc1, 1);
     let mut pc2_nn_pts: Vec<[f64; 3]> = Vec::with_capacity(nn.len());
     for nn_res in nn.iter() {
-        pc2_nn_pts.push(pc2.points[nn_res[0].1]);
+        pc2_nn_pts.push(pc2.points[nn_res[0].idx]);
     }
 
     let planarity = pc1.planarity.select(Axis(0), &idx_pc1);
