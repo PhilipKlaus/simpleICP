@@ -10,6 +10,7 @@ use crate::permutation::SortArray;
 
 use crate::pointcloud::PointCloud;
 
+static mut called: u64 = 0;
 
 // pc1 == fixed / pc2 == moved
 pub fn match_point_clouds(pc1: &PointCloud, pc2: &PointCloud) -> (Array1<f64>, Array1<f64>) {

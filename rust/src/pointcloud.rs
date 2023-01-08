@@ -9,15 +9,6 @@ use linfa_linalg::eigh::{EighInto, EigSort};
 use ndarray::{Array, Array1, Array2, Ix2, s};
 use ndarray_stats::CorrelationExt;
 
-pub struct PointCloud {
-    pub points: Vec<[f64; 3]>,
-    selected: Vec<bool>,
-    // Store selection state for every point
-    pub normals: Array2<f64>,
-    // Store normal for every point
-    pub planarity: Array1<f64>,
-}
-
 #[derive(Debug, PartialEq)]
 pub struct NormalRes {
     eigenvector: Array1<f64>,
@@ -27,6 +18,29 @@ pub struct NormalRes {
 impl Display for NormalRes {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "NormalRes:\nEigenvector: {}\nPlanarity:{}", self.eigenvector, self.planarity)
+    }
+}
+
+
+pub struct PointCloud {
+    pub points: Vec<[f64; 3]>,
+    selected: Vec<bool>,
+    // Store selection state for every point
+    pub normals: Array2<f64>,
+    // Store normal for every point
+    pub planarity: Array1<f64>,
+}
+
+// 'Static' PointCloud methods
+impl PointCloud {
+    pub fn write_cloud_to_file(cloud: Vec<[f64; 3]>, name: &str) {
+        let file = File::create(name).expect("Could not open file");
+        let mut writer = BufWriter::new(file);
+        for pt in cloud.iter() {
+            write!(writer, "{} ", pt[0]).expect("Unable to write to file");
+            write!(writer, "{} ", pt[1]).expect("Unable to write to file");
+            write!(writer, "{}\n", pt[2]).expect("Unable to write to file");
+        }
     }
 }
 
@@ -75,16 +89,6 @@ impl PointCloud {
             if f64::sqrt(nn[i][0].0) > max_range {
                 self.selected[sel_idx[i]] = false;
             }
-        }
-    }
-
-    pub fn export_selected_points(&self, name: &str) {
-        let file = File::create(name).expect("Could not open file");
-        let mut writer = BufWriter::new(file);
-        for pt in self.get_selected_points().iter() {
-            write!(writer, "{} ", pt[0]).expect("Unable to write to file");
-            write!(writer, "{} ", pt[1]).expect("Unable to write to file");
-            write!(writer, "{}\n", pt[2]).expect("Unable to write to file");
         }
     }
 

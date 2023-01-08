@@ -74,12 +74,12 @@ fn main() {
                 params.max_overlap_distance
             );
         }
-        fixed.export_selected_points("initial_selection.xyz");
+        PointCloud::write_cloud_to_file(fixed.get_selected_points(), "initial_selection.xyz");
     }
 
     print!("Select points for correspondences in fixed point cloud ...\n");
     fixed.select_n_pts(params.correspondences);
-    fixed.export_selected_points(&*format!("select_{}_pts.xyz", params.correspondences));
+    PointCloud::write_cloud_to_file(fixed.get_selected_points(), &*format!("select_{}_pts.xyz", params.correspondences));
 
     println!("Estimate normals of selected points ...\n");
     fixed.estimate_normals(params.neighbors);
