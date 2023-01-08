@@ -13,7 +13,7 @@ use kdtree::distance::squared_euclidean;use ndarray::prelude::*;
 use ordered_float::OrderedFloat;
 
 use crate::corrpts::{match_point_clouds, reject};
-use crate::pointcloud::{Item, PointCloud};
+use crate::pointcloud::{PointCloud};
 
 mod pointcloud;
 mod corrpts;
@@ -26,40 +26,7 @@ struct Parameters {
 }
 
 // ToDo: Return Option
-fn read_xyz_file(path: String) -> Vec<Item> {
-    let file = File::open(path).expect("Unable to open file");
-    let reader = BufReader::new(file);
-    reader
-        .lines()
-        .into_iter()
-        .enumerate()
-        .map(|(idx, l)| {
-            let line = l.expect("Could not read line");
-            let mut parts = line.split_whitespace();
-            let x: f64 = parts
-                .next()
-                .expect("Unable to parse x coordinate")
-                .parse()
-                .expect("Unable to parse x coordinate");
-            let y: f64 = parts
-                .next()
-                .expect("Unable to parse y coordinate")
-                .parse()
-                .expect("Unable to parse y coordinate");
-            let z: f64 = parts
-                .next()
-                .expect("Unable to parse z coordinate")
-                .parse()
-                .expect("Unable to parse z coordinate");
-            Item {
-                point: [x, y, z],
-                id: idx,
-            }
-        })
-        .collect()
-}
-
-fn read_xyz_file_simple(path: String) -> Vec<[f64; 3]> {
+fn read_xyz_file(path: String) -> Vec<[f64; 3]> {
     let file = File::open(path).expect("Unable to open file");
     let reader = BufReader::new(file);
     reader

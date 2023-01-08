@@ -9,19 +9,9 @@ use ndarray::{Array, Array1, Array2, Axis, Ix2, s};
 use ndarray_stats::CorrelationExt;
 use ordered_float::OrderedFloat;
 
-#[derive(Copy, Clone)]
-pub struct Item {
-    pub(crate) point: [f64; 3],
-    pub(crate) id: usize,
-}
-impl kd_tree::KdPoint for Item {
-    type Scalar = f64;
-    type Dim = typenum::U3;
-    fn at(&self, k: usize) -> f64 { self.point[k] }
-}
 
 pub struct PointCloud {
-    pub points: Vec<Item>,
+    pub points: Vec<[f64;3]>,
     selected: Vec<bool>,
     // Store selection state for every point
     pub normals: Array2<f64>,
@@ -51,7 +41,7 @@ impl Display for NormalRes {
 }
 
 impl PointCloud {
-    pub fn new(points: Vec<Item>) -> PointCloud {
+    pub fn new(points: Vec<[f64;3]>) -> PointCloud {
         let point_amount = points.len();
         PointCloud {
             points,
@@ -62,14 +52,14 @@ impl PointCloud {
     }
 
     pub fn knn_search<'a>(
-        cloud_ref: &'a mut Vec<Item>,
-        cloud_query: &'a Vec<Item>,
+        cloud_ref: &'a mut Vec<[f64;3]>,
+        cloud_query: &'a Vec<[f64;3]>,
         k: usize,
-    ) -> Vec<Vec<ItemAndDistance<'a, Item, f64>>> {
+    ) -> Vec<Vec<ItemAndDistance<'a, [f64;3], f64>>> {
         let now = Instant::now();
 
-        let tree = kd_tree::KdSlice3::sort_by_key(cloud_ref, |item, k| OrderedFloat(item.point[k]));
-        let mut nn: Vec<Vec<ItemAndDistance<Item, f64>>> = Vec::new();
+        let tree: &KdSlice<[f64; 3]> = KdSlice::sort_by_ordered_float(cloud_ref);
+        let mut nn: Vec<Vec<ItemAndDistance<[f64;3], f64>>> = Vec::new();
         for query in cloud_query {
             nn.push(tree.nearests(query, k));
         }
@@ -96,9 +86,9 @@ impl PointCloud {
         let mut file = File::create(name).expect("Could not open file");
         let mut writer = BufWriter::new(file);
         for pt in self.get_selected_points().iter() {
-            write!(writer, "{} ", pt.point[0]).expect("Unable to write to file");
-            write!(writer, "{} ", pt.point[1]).expect("Unable to write to file");
-            write!(writer, "{}\n", pt.point[2]).expect("Unable to write to file");
+            write!(writer, "{} ", pt[0]).expect("Unable to write to file");
+            write!(writer, "{} ", pt[1]).expect("Unable to write to file");
+            write!(writer, "{}\n", pt[2]).expect("Unable to write to file");
         }
     }
 
@@ -123,7 +113,7 @@ impl PointCloud {
             .collect()
     }
 
-    pub fn get_selected_points(&self) -> Vec<Item> {
+    pub fn get_selected_points(&self) -> Vec<[f64;3]> {
         self.get_idx_of_selected_points()
             .into_iter()
             .map(|idx| self.points[idx])
@@ -143,9 +133,9 @@ impl PointCloud {
             let mut x_nn: Array<f64, Ix2> = Array::zeros((neighbors, 3));
 
             for j in 0..neighbors {
-                x_nn[[j, 0]] = nn[i][j].item.point[0];
-                x_nn[[j, 1]] = nn[i][j].item.point[1];
-                x_nn[[j, 2]] = nn[i][j].item.point[2];
+                x_nn[[j, 0]] = nn[i][j].item[0];
+                x_nn[[j, 1]] = nn[i][j].item[1];
+                x_nn[[j, 2]] = nn[i][j].item[2];
             }
 
             let normal = Self::normal_from_neighbors(&mut x_nn);
