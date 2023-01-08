@@ -6,7 +6,7 @@ use std::time::Instant;
 use kdtree::distance::squared_euclidean;
 use kdtree::KdTree;
 use linfa_linalg::eigh::{EighInto, EigSort};
-use ndarray::{Array, Array1, Array2, Ix2, s};
+use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s};
 use ndarray_stats::CorrelationExt;
 
 #[derive(Debug, PartialEq)]
@@ -31,7 +31,6 @@ impl Display for NormalRes {
         write!(f, "NormalRes:\nEigenvector: {}\nPlanarity:{}", self.eigenvector, self.planarity)
     }
 }
-
 
 pub struct PointCloud {
     pub points: Vec<[f64; 3]>,
@@ -133,15 +132,21 @@ impl PointCloud {
     }
 
     pub fn get_selected_points(&self) -> Vec<[f64; 3]> {
-        self.get_idx_of_selected_points()
-            .into_iter()
-            .map(|idx| self.points[idx])
+        self.selected
+            .iter()
+            .zip(self.points.iter())
+            .filter(|(selected, point)| **selected)
+            .map(|filtered|*filtered.1)
             .collect()
     }
 
     pub fn estimate_normals(&mut self, neighbors: usize) {
+        let now = Instant::now();
+
         let sel_idx = self.get_idx_of_selected_points();
         let query_points = self.get_selected_points();
+
+        println!("SELECT QUERY POINTS took: {}", now.elapsed().as_millis());
 
         let point_amount = self.points.len();
         let nn = PointCloud::knn_search(&mut self.points, &query_points, neighbors);
@@ -165,7 +170,7 @@ impl PointCloud {
         }
     }
 
-    pub fn normal_from_neighbors(neighbors: &mut Array<f64, Ix2>) -> NormalRes {
+    fn normal_from_neighbors(neighbors: &mut Array<f64, Ix2>) -> NormalRes {
         let covariance = neighbors.t().cov(1.).unwrap();
         let eig_res = covariance.eigh_into().unwrap();
         let mut eig_sort = eig_res.sort_eig_desc();

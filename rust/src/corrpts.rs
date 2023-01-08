@@ -8,7 +8,7 @@ use ndarray::prelude::*;
 use rawpointer::PointerExt;
 use crate::permutation::SortArray;
 
-use crate::pointcloud::PointCloud;
+use crate::pointcloud::{NNRes, PointCloud};
 
 static mut called: u64 = 0;
 
@@ -22,31 +22,27 @@ pub fn match_point_clouds(pc1: &PointCloud, pc2: &PointCloud) -> (Array1<f64>, A
     let idx_pc1 = pc1.get_idx_of_selected_points();
 
     let nn = PointCloud::knn_search(&mut pts_sel_pc2, &pts_sel_pc1, 1);
-    let mut pc2_nn_pts: Vec<[f64; 3]> = Vec::with_capacity(nn.len());
-    for nn_res in nn.iter() {
-        pc2_nn_pts.push(pc2.points[nn_res[0].idx]);
-    }
 
     let planarity = pc1.planarity.select(Axis(0), &idx_pc1);
-    let dists = dist_between_point_sets(pc1, &idx_pc1, &pts_sel_pc1, &pc2_nn_pts);
+    let dists = dist_between_neighbors(pc1, &idx_pc1, pc2, &nn);
     println!("match_point_clouds took: {}", now.elapsed().as_millis());
     (planarity, dists)
 }
 
-fn dist_between_point_sets(pc1: &PointCloud, idx_pc1: &Vec<usize>, p_set1: &Vec<[f64; 3]>, p_set2: &Vec<[f64; 3]>) -> Array1<f64> {
-    let mut dists: Array1<f64> = Array::from_elem(p_set1.len(), f64::NAN);
-    for (idx, (p1, p2)) in p_set1.iter().zip(p_set2.iter()).enumerate() {
-        let x1 = p1[0];
-        let y1 = p1[1];
-        let z1 = p1[2];
+fn dist_between_neighbors(pc1: &PointCloud, idx_pc1: &Vec<usize>, pc2: &PointCloud, neighbors: &Vec<Vec<NNRes>>) -> Array1<f64> {
+    let mut dists: Array1<f64> = Array::from_elem(idx_pc1.len(), f64::NAN);
+    for (idx, (p1, nn)) in idx_pc1.iter().zip(neighbors.iter()).enumerate() {
+        let x1 = pc1.points[*p1][0];
+        let y1 = pc1.points[*p1][1];
+        let z1 = pc1.points[*p1][2];
 
-        let x2 = p2[0];
-        let y2 = p2[1];
-        let z2 = p2[2];
+        let x2 = pc2.points[nn[0].idx][0];
+        let y2 = pc2.points[nn[0].idx][1];
+        let z2 = pc2.points[nn[0].idx][2];
 
-        let nx1 = pc1.normals[[idx_pc1[idx], 0]];
-        let ny1 = pc1.normals[[idx_pc1[idx], 1]];
-        let nz1 = pc1.normals[[idx_pc1[idx], 2]];
+        let nx1 = pc1.normals[[*p1, 0]];
+        let ny1 = pc1.normals[[*p1, 1]];
+        let nz1 = pc1.normals[[*p1, 2]];
 
         dists[[idx]] = (x2 - x1) * nx1 + (y2 - y1) * ny1 + (z2 - z1) * nz1;
     }
