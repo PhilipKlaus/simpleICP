@@ -21,7 +21,7 @@ struct Parameters {
 }
 
 // ToDo: Return Option
-fn read_xyz_file(path: String) -> Vec<[f64; 3]> {
+fn read_xyz_file(path: String) -> Vec<f64> {
     let file = File::open(path).expect("Unable to open file");
     let reader = BufReader::new(file);
     reader
@@ -47,6 +47,7 @@ fn read_xyz_file(path: String) -> Vec<[f64; 3]> {
                 .expect("Unable to parse z coordinate");
             [x, y, z]
         })
+        .flatten()
         .collect()
 }
 

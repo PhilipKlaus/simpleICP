@@ -6,7 +6,7 @@ use std::time::Instant;
 use kdtree::distance::squared_euclidean;
 use kdtree::KdTree;
 use linfa_linalg::eigh::{EighInto, EigSort};
-use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s};
+use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s, stack};
 use ndarray_stats::CorrelationExt;
 
 #[derive(Debug, PartialEq)]
@@ -33,7 +33,7 @@ impl Display for NormalRes {
 }
 
 pub struct PointCloud {
-    pub points: Vec<[f64; 3]>,
+    pub points: Array2<f64>,
     selected: Vec<bool>,
     // Store selection state for every point
     pub normals: Array2<f64>,
@@ -45,33 +45,33 @@ pub struct PointCloud {
 //# 'Static' PointCloud methods #
 //###############################
 impl PointCloud {
-    pub fn write_cloud_to_file(cloud: Vec<[f64; 3]>, name: &str) {
+    pub fn write_cloud_to_file(cloud: Array2<f64>, name: &str) {
         let file = File::create(name).expect("Could not open file");
         let mut writer = BufWriter::new(file);
-        for pt in cloud.iter() {
-            write!(writer, "{} ", pt[0]).expect("Unable to write to file");
-            write!(writer, "{} ", pt[1]).expect("Unable to write to file");
-            write!(writer, "{}\n", pt[2]).expect("Unable to write to file");
+        for pt in cloud.outer_iter() {
+            write!(writer, "{} ", pt[[0]]).expect("Unable to write to file");
+            write!(writer, "{} ", pt[[1]]).expect("Unable to write to file");
+            write!(writer, "{}\n", pt[[2]]).expect("Unable to write to file");
         }
     }
 
     pub fn knn_search<'a>(
-        cloud_ref: &'a mut Vec<[f64; 3]>,
-        cloud_query: &'a Vec<[f64; 3]>,
+        cloud_ref: &'a Array2<f64>,
+        cloud_query: &'a Array2<f64>,
         k: usize,
     ) -> Vec<Vec<NNRes>> {
         let now = Instant::now();
 
         let mut kdtree = KdTree::new(3);
 
-        for (idx, p) in cloud_ref.iter().enumerate() {
-            kdtree.add(p, idx).expect("Could not add point to kdtree");
+        for (idx, p) in cloud_ref.outer_iter().enumerate() {
+            kdtree.add([p[[0]], p[[1]], p[[2]]], idx).expect("Could not add point to kdtree");
         }
 
         let mut nn: Vec<Vec<NNRes>> = Vec::new();
-        for query in cloud_query.iter() {
+        for query in cloud_query.outer_iter() {
             nn.push(
-                kdtree.nearest(query, k, &squared_euclidean)
+                kdtree.nearest(&[query[[0]], query[[1]], query[[2]]], k, &squared_euclidean)
                     .expect("Could not fetch nn for point")
                     .iter()
                     .map(|entry| NNRes::from((entry.0, *entry.1)))
@@ -84,10 +84,12 @@ impl PointCloud {
 }
 
 impl PointCloud {
-    pub fn new(points: Vec<[f64; 3]>) -> PointCloud {
-        let point_amount = points.len();
+    pub fn new(points: Vec<f64>) -> PointCloud {
+        let point_amount = points.len() / 3;
+        println!("Creating point cloud of shape: [{},3]", point_amount / 3);
         PointCloud {
-            points,
+            points: Array::from_shape_vec((point_amount, 3), points)
+                .expect("Could not create ndarray from points"),
             selected: vec![true; point_amount], // Initially select all points,
             normals: Array::from_elem((point_amount, 3), f64::NAN),
             planarity: Array::from_elem(point_amount, f64::NAN),
@@ -98,6 +100,10 @@ impl PointCloud {
     pub fn select_in_range(&mut self, cloud: &mut PointCloud, max_range: f64) {
         let sel_idx = self.get_idx_of_selected_points();
         let query_points = self.get_selected_points();
+
+        println!("Selected indices: {}", sel_idx.len());
+        println!("Selected points: {:?}", query_points);
+
 
         // Get nearest neighbours
         let nn = PointCloud::knn_search(&mut cloud.points, &query_points, 1);
@@ -131,13 +137,14 @@ impl PointCloud {
             .collect()
     }
 
-    pub fn get_selected_points(&self) -> Vec<[f64; 3]> {
-        self.selected
+    pub fn get_selected_points(&self) -> Array<f64, Ix2> {
+        let views: Vec<ArrayView<f64, Ix1>> = self.selected
             .iter()
-            .zip(self.points.iter())
+            .zip(self.points.outer_iter())
             .filter(|(selected, point)| **selected)
-            .map(|filtered|*filtered.1)
-            .collect()
+            .map(|filtered| filtered.1)
+            .collect();
+        stack(Axis(0), &views).expect("Could not fetch selected points")
     }
 
     pub fn estimate_normals(&mut self, neighbors: usize) {
@@ -157,9 +164,9 @@ impl PointCloud {
             let mut x_nn: Array<f64, Ix2> = Array::zeros((neighbors, 3));
 
             for j in 0..neighbors {
-                x_nn[[j, 0]] = self.points[nn[i][j].idx][0];
-                x_nn[[j, 1]] = self.points[nn[i][j].idx][1];
-                x_nn[[j, 2]] = self.points[nn[i][j].idx][2];
+                x_nn[[j, 0]] = self.points[[nn[i][j].idx, 0]];
+                x_nn[[j, 1]] = self.points[[nn[i][j].idx, 1]];
+                x_nn[[j, 2]] = self.points[[nn[i][j].idx, 2]];
             }
 
             let normal = Self::normal_from_neighbors(&mut x_nn);
