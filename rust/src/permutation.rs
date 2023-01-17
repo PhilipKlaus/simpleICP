@@ -1,3 +1,5 @@
+// From: // https://github.com/rust-ndarray/ndarray/blob/master/examples/sort-axis.rs
+
 use std::cmp::Ordering;
 use std::intrinsics::copy_nonoverlapping;
 use ndarray::{Array, ArrayBase, Axis, Data, Dimension, RemoveAxis, Zip};

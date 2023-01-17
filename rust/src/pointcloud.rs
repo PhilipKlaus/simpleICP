@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::time::Instant;
 
 use kdtree::distance::squared_euclidean;
@@ -32,44 +32,122 @@ impl Display for NormalRes {
     }
 }
 
+pub trait PointCloudView {
+    fn x(&self) -> ArrayView<'_, f64, Ix2>;
+}
+
+#[derive(Default)]
+pub struct PointSelection {
+    points: Array2<f64>,
+}
+
+impl PointSelection {
+    pub fn new(points: Array2<f64>) -> PointSelection {
+        PointSelection { points }
+    }
+
+    pub fn select_from_point_cloud(cloud: &PointCloud, idx: &Vec<usize>) -> PointSelection {
+        PointSelection { points: cloud.points.select(Axis(0), &idx) }
+    }
+}
+
+impl PointCloudView for PointSelection {
+    fn x(&self) -> ArrayView<'_, f64, Ix2> {
+        self.points.view()
+    }
+}
+
 pub struct PointCloud {
     pub points: Array2<f64>,
-    selected: Vec<bool>,
     // Store selection state for every point
     pub normals: Array2<f64>,
     // Store normal for every point
     pub planarity: Array1<f64>,
+
+    pub selected: Array1<bool>,
+    selection: PointSelection,
 }
+
+impl PointCloudView for PointCloud {
+    fn x(&self) -> ArrayView<'_, f64, Ix2> {
+        self.points.view()
+    }
+}
+
 
 //###############################
 //# 'Static' PointCloud methods #
 //###############################
 impl PointCloud {
-    pub fn write_cloud_to_file(cloud: Array2<f64>, name: &str) {
+    // ToDo: return Result<>
+    pub fn read_from_xyz(path: &str) -> PointCloud {
+        let file = File::open(path).expect("Could not read pointcloud from file");
+        let reader = BufReader::new(file);
+        let point_data = reader
+            .lines()
+            .into_iter()
+            .map(|l| {
+                let line = l.expect("Could not read line");
+                let xyz: Vec<f64> = line.split_whitespace().map(|part| {
+                    let coord: f64 = part.parse().expect("Unable to parse coordinate");
+                    coord
+                }).collect();
+                xyz
+            })
+            .flatten()
+            .collect();
+        PointCloud::new(point_data)
+    }
+
+    pub fn write_to_file(cloud: &dyn PointCloudView, name: &str) {
         let file = File::create(name).expect("Could not open file");
         let mut writer = BufWriter::new(file);
-        for pt in cloud.outer_iter() {
+        for pt in cloud.x().outer_iter() {
             write!(writer, "{} ", pt[[0]]).expect("Unable to write to file");
             write!(writer, "{} ", pt[[1]]).expect("Unable to write to file");
             write!(writer, "{}\n", pt[[2]]).expect("Unable to write to file");
         }
     }
 
-    pub fn knn_search<'a>(
-        cloud_ref: &'a Array2<f64>,
-        cloud_query: &'a Array2<f64>,
+    pub fn knn_search(
+        reference: &dyn PointCloudView,
+        query: &dyn PointCloudView,
         k: usize,
     ) -> Vec<Vec<NNRes>> {
-        let now = Instant::now();
-
         let mut kdtree = KdTree::new(3);
 
-        for (idx, p) in cloud_ref.outer_iter().enumerate() {
+        for (idx, p) in reference.x().outer_iter().enumerate() {
             kdtree.add([p[[0]], p[[1]], p[[2]]], idx).expect("Could not add point to kdtree");
         }
 
         let mut nn: Vec<Vec<NNRes>> = Vec::new();
-        for query in cloud_query.outer_iter() {
+        for q in query.x().outer_iter() {
+            nn.push(
+                kdtree.nearest(&[q[[0]], q[[1]], q[[2]]], k, &squared_euclidean)
+                    .expect("Could not fetch nn for point")
+                    .iter()
+                    .map(|entry| NNRes::from((entry.0, *entry.1)))
+                    .collect()
+            );
+        }
+        nn
+    }
+
+    // Alternative implementation using ArrayViews
+    #[allow(dead_code)]
+    pub fn knn_search_e<'a>(
+        cloud_ref: &Vec<ArrayView<f64, Ix1>>,
+        cloud_query: &Vec<ArrayView<f64, Ix1>>,
+        k: usize,
+    ) -> Vec<Vec<NNRes>> {
+        let mut kdtree = KdTree::new(3);
+
+        for (idx, p) in cloud_ref.iter().enumerate() {
+            kdtree.add([p[[0]], p[[1]], p[[2]]], idx).expect("Could not add point to kdtree");
+        }
+
+        let mut nn: Vec<Vec<NNRes>> = Vec::new();
+        for query in cloud_query.iter() {
             nn.push(
                 kdtree.nearest(&[query[[0]], query[[1]], query[[2]]], k, &squared_euclidean)
                     .expect("Could not fetch nn for point")
@@ -78,35 +156,41 @@ impl PointCloud {
                     .collect()
             );
         }
-        println!("knn_search took: {}", now.elapsed().as_millis());
         nn
+    }
+}
+
+//###############################
+//# 'Getters' for PointCloud    #
+//###############################
+impl PointCloud {
+    pub fn point_amount(&self) -> usize {
+        self.points.shape()[0]
     }
 }
 
 impl PointCloud {
     pub fn new(points: Vec<f64>) -> PointCloud {
         let point_amount = points.len() / 3;
-        println!("Creating point cloud of shape: [{},3]", point_amount / 3);
-        PointCloud {
+        let mut cloud = PointCloud {
             points: Array::from_shape_vec((point_amount, 3), points)
                 .expect("Could not create ndarray from points"),
-            selected: vec![true; point_amount], // Initially select all points,
+            selected: Array1::from_elem(point_amount, true), // Initially select all points,
             normals: Array::from_elem((point_amount, 3), f64::NAN),
             planarity: Array::from_elem(point_amount, f64::NAN),
-        }
+            selection: Default::default(),
+        };
+        cloud.selection = PointSelection::select_from_point_cloud(&cloud, &cloud.get_idx_of_selected_points());
+        cloud
     }
 
 
     pub fn select_in_range(&mut self, cloud: &mut PointCloud, max_range: f64) {
         let sel_idx = self.get_idx_of_selected_points();
-        let query_points = self.get_selected_points();
-
-        println!("Selected indices: {}", sel_idx.len());
-        println!("Selected points: {:?}", query_points);
-
+        let query = self.get_selected_points();
 
         // Get nearest neighbours
-        let nn = PointCloud::knn_search(&mut cloud.points, &query_points, 1);
+        let nn = PointCloud::knn_search(cloud, query, 1);
 
         // ToDo: possible impr. compare to squared dist -> than no sqrt necessary
         for i in 0..sel_idx.len() {
@@ -114,17 +198,21 @@ impl PointCloud {
                 self.selected[sel_idx[i]] = false;
             }
         }
+
+        self.selection = PointSelection::select_from_point_cloud(self, &self.get_idx_of_selected_points());
     }
 
     pub fn select_n_pts(&mut self, n: usize) {
         let sel_idx = self.get_idx_of_selected_points();
         if n < sel_idx.len() {
-            self.selected = vec![false; self.points.len()];
+            self.selected.fill(false);
             let dist_idx = Array::<f64, _>::linspace(0., (sel_idx.len() - 1) as f64, n);
 
             for idx in dist_idx.iter() {
                 self.selected[sel_idx[idx.floor() as usize]] = true;
             }
+
+            self.selection = PointSelection::select_from_point_cloud(self, &self.get_idx_of_selected_points());
         }
     }
 
@@ -137,26 +225,17 @@ impl PointCloud {
             .collect()
     }
 
-    pub fn get_selected_points(&self) -> Array<f64, Ix2> {
-        let views: Vec<ArrayView<f64, Ix1>> = self.selected
-            .iter()
-            .zip(self.points.outer_iter())
-            .filter(|(selected, point)| **selected)
-            .map(|filtered| filtered.1)
-            .collect();
-        stack(Axis(0), &views).expect("Could not fetch selected points")
+    // ToDo: getter changes state -> not very nice xD
+    pub fn get_selected_points(&self) -> &PointSelection {
+        &self.selection
     }
 
     pub fn estimate_normals(&mut self, neighbors: usize) {
-        let now = Instant::now();
-
         let sel_idx = self.get_idx_of_selected_points();
         let query_points = self.get_selected_points();
 
-        println!("SELECT QUERY POINTS took: {}", now.elapsed().as_millis());
-
         let point_amount = self.points.len();
-        let nn = PointCloud::knn_search(&mut self.points, &query_points, neighbors);
+        let nn = PointCloud::knn_search(self, query_points, neighbors);
 
         self.normals = Array::from_elem((point_amount, 3), f64::NAN);
 
@@ -210,23 +289,6 @@ mod point_cloud_test {
             [3., 2., 3.],
             [3., 3., 3.],
         ]
-    }
-
-    #[test]
-    fn recenter_points() {
-        let mut points = get_points();
-        PointCloud::recenter_points(&mut points);
-        assert_eq!(points, array![
-            [-1., -1., -1.],
-            [-1., 0., -1.],
-            [-1., 1., -1.],
-            [0., -1., 0.],
-            [0., 0., 0.],
-            [0., 1., 0.],
-            [1., -1., 1.],
-            [1., 0., 1.],
-            [1., 1., 1.],
-        ]);
     }
 
     #[test]

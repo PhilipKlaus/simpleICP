@@ -1,27 +1,20 @@
-use std::cmp::Ordering;
-use std::ptr::copy_nonoverlapping;
 use std::time::Instant;
 
-use ndarray::{Array, Array1, Axis};
-use ndarray::{Data, RemoveAxis, Zip};
-use ndarray::prelude::*;
-use rawpointer::PointerExt;
-use crate::permutation::SortArray;
+use ndarray::{Array, Array1, Axis, Ix1};
 
+use crate::permutation::{PermuteArray, SortArray};
 use crate::pointcloud::{NNRes, PointCloud};
-
-static mut called: u64 = 0;
 
 // pc1 == fixed / pc2 == moved
 pub fn match_point_clouds(pc1: &PointCloud, pc2: &PointCloud) -> (Array1<f64>, Array1<f64>) {
     let now = Instant::now();
 
     let pts_sel_pc1 = pc1.get_selected_points();
-    let mut pts_sel_pc2 = pc2.get_selected_points();
+    let pts_sel_pc2 = pc2.get_selected_points();
 
     let idx_pc1 = pc1.get_idx_of_selected_points();
 
-    let nn = PointCloud::knn_search(&mut pts_sel_pc2, &pts_sel_pc1, 1);
+    let nn = PointCloud::knn_search(pts_sel_pc2, pts_sel_pc1, 1);
 
     let planarity = pc1.planarity.select(Axis(0), &idx_pc1);
     let dists = dist_between_neighbors(pc1, &idx_pc1, pc2, &nn);
@@ -49,22 +42,48 @@ fn dist_between_neighbors(pc1: &PointCloud, idx_pc1: &Vec<usize>, pc2: &PointClo
     dists
 }
 
-fn get_dists_median(dists: &Array1<f64>) -> f64 {
-    let sorted = dists.sort_axis_by(Axis(0), |i, j| dists[[i]] > dists[[j]]);
-    return if dists.len() % 2 == 0 {
+fn get_median(data: &Array1<f64>) -> f64 {
+    let data_copy = data.clone();
+    let perm = data_copy.sort_axis_by(Axis(0), |i, j| data_copy[[i]] > data_copy[[j]]);
+    let sorted = data_copy.permute_axis(Axis(0), &perm);
+    let len = data.len();
+    return if len % 2 == 0 {
         // If the length of the array is even, take the average of the two middle elements
-        (dists[dists.len() / 2] + dists[(dists.len() / 2) - 1]) / 2.0
+        (sorted[len / 2] + sorted[(len / 2) - 1]) / 2.0
     } else {
         // If the length of the array is odd, take the middle element
-        dists[dists.len() / 2]
+        sorted[len / 2]
     };
 }
 
-// https://github.com/rust-ndarray/ndarray/blob/master/examples/sort-axis.rs
+fn get_mad(data: &Array1<f64>, median: f64) -> f64 {
+    let dmed: Array<f64, Ix1> = data.map(|x| f64::abs(x - median));
+    get_median(&dmed)
+}
+
 pub(crate) fn reject(planarity: &Array1<f64>, dists: &Array1<f64>) {
     let now = Instant::now();
 
-    let med = get_dists_median(dists);
+    let med = get_median(dists);
+    let mad = get_mad(dists, med);
+
+    /*dists.iter()
+        .enumerate()
+        .filter(|(idx, dist)| {
+            (abs(dists_[i] - med) > 3 * sigmad) | (planarity_[i] < min_planarity)
+        })
+        .collect()*/
+
+    /*
+      for (int i = 0; i < dists_.size(); i++)
+        {
+        if ((abs(dists_[i] - med) > 3 * sigmad) | (planarity_[i] < min_planarity))
+        {
+          keep[i] = false;
+        }
+        }
+    */
+
     /*let keep = dists.iter().enumerate().map(|(idx, d) | {
         return if (abs(d - med) > 3 * sigmad) | (planarity_[i] < min_planarity) {
             false
@@ -75,20 +94,22 @@ pub(crate) fn reject(planarity: &Array1<f64>, dists: &Array1<f64>) {
     })*/
     //let d: Array1<bool> = array![true, false, false, true, true];
     //let s = d.iter().filter(|x| **x).count();
-    println!("reject took: {}", now.elapsed().as_millis());
+    println!("reject took: {}\n", now.elapsed().as_millis());
 }
 
 #[cfg(test)]
 mod corrpts_test {
     use ndarray::{array, Array, Array1};
 
-    use crate::corrpts::get_dists_median;
+    use crate::corrpts::get_median;
 
     #[test]
     fn test_get_dists_median() {
         let arr1: Array1<f64> = Array::linspace(0., 1.0, 9);
-        assert_eq!(get_dists_median(&arr1), 0.5);
+        assert_eq!(get_median(&arr1), 0.5);
         let arr2: Array1<f64> = Array::linspace(1., 8.0, 8);
-        assert_eq!(get_dists_median(&arr2), 4.5);
+        assert_eq!(get_median(&arr2), 4.5);
+        let arr3: Array1<f64> = array![3.0, 0.0, 1.0]; // Test that values are sorted beforehand
+        assert_eq!(get_median(&arr3), 1.0);
     }
 }
