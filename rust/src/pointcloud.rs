@@ -8,6 +8,7 @@ use kdtree::KdTree;
 use linfa_linalg::eigh::{EighInto, EigSort};
 use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s, stack};
 use ndarray_stats::CorrelationExt;
+use crate::point_selection::{PointCloudView, PointSelection};
 
 #[derive(Debug, PartialEq)]
 pub struct NormalRes {
@@ -32,30 +33,7 @@ impl Display for NormalRes {
     }
 }
 
-pub trait PointCloudView {
-    fn x(&self) -> ArrayView<'_, f64, Ix2>;
-}
 
-#[derive(Default)]
-pub struct PointSelection {
-    points: Array2<f64>,
-}
-
-impl PointSelection {
-    pub fn new(points: Array2<f64>) -> PointSelection {
-        PointSelection { points }
-    }
-
-    pub fn select_from_point_cloud(cloud: &PointCloud, idx: &Vec<usize>) -> PointSelection {
-        PointSelection { points: cloud.points.select(Axis(0), &idx) }
-    }
-}
-
-impl PointCloudView for PointSelection {
-    fn x(&self) -> ArrayView<'_, f64, Ix2> {
-        self.points.view()
-    }
-}
 
 pub struct PointCloud {
     pub points: Array2<f64>,
@@ -65,7 +43,7 @@ pub struct PointCloud {
     pub planarity: Array1<f64>,
 
     pub selected: Array1<bool>,
-    selection: PointSelection,
+    selection: Option<PointSelection>,
 }
 
 impl PointCloudView for PointCloud {
@@ -172,16 +150,14 @@ impl PointCloud {
 impl PointCloud {
     pub fn new(points: Vec<f64>) -> PointCloud {
         let point_amount = points.len() / 3;
-        let mut cloud = PointCloud {
+        PointCloud {
             points: Array::from_shape_vec((point_amount, 3), points)
                 .expect("Could not create ndarray from points"),
             selected: Array1::from_elem(point_amount, true), // Initially select all points,
             normals: Array::from_elem((point_amount, 3), f64::NAN),
             planarity: Array::from_elem(point_amount, f64::NAN),
-            selection: Default::default(),
-        };
-        cloud.selection = PointSelection::select_from_point_cloud(&cloud, &cloud.get_idx_of_selected_points());
-        cloud
+            selection: None,
+        }
     }
 
 
@@ -199,7 +175,7 @@ impl PointCloud {
             }
         }
 
-        self.selection = PointSelection::select_from_point_cloud(self, &self.get_idx_of_selected_points());
+        self.selection = Option::from(PointSelection::select_from_point_cloud(self, &self.get_idx_of_selected_points()));
     }
 
     pub fn select_n_pts(&mut self, n: usize) {
@@ -212,7 +188,7 @@ impl PointCloud {
                 self.selected[sel_idx[idx.floor() as usize]] = true;
             }
 
-            self.selection = PointSelection::select_from_point_cloud(self, &self.get_idx_of_selected_points());
+            self.selection = Option::from(PointSelection::select_from_point_cloud(self, &self.get_idx_of_selected_points()));
         }
     }
 
@@ -225,9 +201,11 @@ impl PointCloud {
             .collect()
     }
 
-    // ToDo: getter changes state -> not very nice xD
-    pub fn get_selected_points(&self) -> &PointSelection {
-        &self.selection
+    pub fn get_selected_points(&self) -> &dyn PointCloudView {
+        match self.selection {
+            Some(ref x) => x,
+            None => self
+        }
     }
 
     pub fn estimate_normals(&mut self, neighbors: usize) {
