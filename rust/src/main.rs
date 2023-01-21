@@ -2,7 +2,7 @@
 extern crate assert_float_eq;
 
 use std::time::Instant;
-use crate::corrpts::{dist_between_neighbors, reject};
+use crate::corrpts::{reject};
 use crate::pointcloud::PointCloud;
 
 mod pointcloud;
@@ -67,7 +67,7 @@ fn main() {
         println!("Iteration {}:", i);
 
         let now = Instant::now();
-        let mut dists = dist_between_neighbors(&fixed.selection(), &moved.selection());
+        let mut dists = PointCloud::cloud_to_cloud_distance(&fixed.selection(), &moved.selection());
         println!("\tdist_between_neighbors took: {}[ms]", now.elapsed().as_millis());
 
         reject(&fixed, &mut dists);

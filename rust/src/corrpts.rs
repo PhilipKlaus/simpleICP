@@ -1,35 +1,9 @@
 use std::time::Instant;
 
-use ndarray::{Array, Array1, ArrayBase, Axis, Ix1, OwnedRepr};
+use ndarray::{Array, Array1, Axis, Ix1};
 
-use crate::nearest_neighbor::knn_search;
 use crate::permutation::{PermuteArray, SortArray};
 use crate::pointcloud::PointCloud;
-
-// pc1 == fixed / pc2 == moved
-pub fn dist_between_neighbors(pc1: &PointCloud, pc2: &PointCloud) -> Array1<f64> {
-    let nn_res = knn_search(pc2, pc1, 1);
-    let dists: Vec<f64> = pc1.points()
-        .outer_iter()
-        .zip(pc1.normals().outer_iter())
-        .zip(nn_res.iter())
-        .map(|((p1, n1), nn)| {
-            let x1 = p1[[0]];
-            let y1 = p1[[1]];
-            let z1 = p1[[2]];
-
-            let x2 = pc2.points()[[nn[0].idx, 0]];
-            let y2 = pc2.points()[[nn[0].idx, 1]];
-            let z2 = pc2.points()[[nn[0].idx, 2]];
-
-            let nx1 = n1[[0]];
-            let ny1 = n1[[1]];
-            let nz1 = n1[[2]];
-
-            (x2 - x1) * nx1 + (y2 - y1) * ny1 + (z2 - z1) * nz1
-        }).collect();
-    Array1::from_vec(dists)
-}
 
 fn get_median(data: &Array1<f64>) -> f64 {
     let data_copy = data.clone();

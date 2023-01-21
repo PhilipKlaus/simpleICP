@@ -1,16 +1,12 @@
-use std::cmp::max;
-use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::time::Instant;
 
-use kdtree::distance::squared_euclidean;
-use kdtree::KdTree;
 use linfa_linalg::eigh::{EighInto, EigSort};
-use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s, stack};
+use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s};
 use ndarray_stats::CorrelationExt;
 
-use crate::nearest_neighbor::{knn_search, NNRes, NormalRes};
+use crate::nearest_neighbor::{knn_search, NormalRes};
 
 #[derive(Default)]
 pub struct PointCloud {
@@ -19,6 +15,87 @@ pub struct PointCloud {
     normals: Array2<f64>,
     selection: Option<Box<PointCloud>>,
     selected_idx: Vec<usize>,
+}
+
+//###############################
+//# 'Static' PointCloud methods #
+//###############################
+impl PointCloud {
+    pub fn new(points: Vec<f64>) -> PointCloud {
+        let point_amount = points.len() / 3;
+        PointCloud {
+            points: Array::from_shape_vec((point_amount, 3), points)
+                .expect("Could not create ndarray from points"),
+            normals: Array::from_elem((point_amount, 3), f64::NAN),
+            planarity: Array::from_elem(point_amount, f64::NAN),
+            selection: None,
+            selected_idx: (0..point_amount).collect(),
+        }
+    }
+
+    pub fn select_from_cloud(cloud: &PointCloud, idx: &Vec<usize>) -> PointCloud {
+        let new_point_amount = idx.len() / 3;
+        PointCloud {
+            points: cloud.points.select(Axis(0), idx),
+            normals: cloud.normals.select(Axis(0), idx),
+            planarity: cloud.planarity.select(Axis(0), idx),
+            selection: None,
+            selected_idx: (0..new_point_amount).collect(),
+        }
+    }
+
+    pub fn read_from_xyz(path: &str) -> PointCloud {
+        let file = File::open(path).expect("Could not read pointcloud from file");
+        let reader = BufReader::new(file);
+        let point_data = reader
+            .lines()
+            .into_iter()
+            .map(|l| {
+                let line = l.expect("Could not read line");
+                let xyz: Vec<f64> = line.split_whitespace().map(|part| {
+                    let coord: f64 = part.parse().expect("Unable to parse coordinate");
+                    coord
+                }).collect();
+                xyz
+            })
+            .flatten()
+            .collect();
+        PointCloud::new(point_data)
+    }
+
+    pub fn write_to_file(cloud: &PointCloud, name: &str) {
+        let file = File::create(name).expect("Could not open file");
+        let mut writer = BufWriter::new(file);
+        for pt in cloud.points().outer_iter() {
+            write!(writer, "{} ", pt[[0]]).expect("Unable to write to file");
+            write!(writer, "{} ", pt[[1]]).expect("Unable to write to file");
+            write!(writer, "{}\n", pt[[2]]).expect("Unable to write to file");
+        }
+    }
+
+    pub fn cloud_to_cloud_distance(pc1: &PointCloud, pc2: &PointCloud) -> Array1<f64> {
+        let nn_res = knn_search(pc2, pc1, 1);
+        let dists: Vec<f64> = pc1.points()
+            .outer_iter()
+            .zip(pc1.normals().outer_iter())
+            .zip(nn_res.iter())
+            .map(|((p1, n1), nn)| {
+                let x1 = p1[[0]];
+                let y1 = p1[[1]];
+                let z1 = p1[[2]];
+
+                let x2 = pc2.points()[[nn[0].idx, 0]];
+                let y2 = pc2.points()[[nn[0].idx, 1]];
+                let z2 = pc2.points()[[nn[0].idx, 2]];
+
+                let nx1 = n1[[0]];
+                let ny1 = n1[[1]];
+                let nz1 = n1[[2]];
+
+                (x2 - x1) * nx1 + (y2 - y1) * ny1 + (z2 - z1) * nz1
+            }).collect();
+        Array1::from_vec(dists)
+    }
 }
 
 //###############################
@@ -54,64 +131,10 @@ impl PointCloud {
 }
 
 //###############################
-//# 'Static' PointCloud methods #
+//#     PointCloud methods      #
 //###############################
-impl PointCloud {
-    // ToDo: return Result<>
-    pub fn read_from_xyz(path: &str) -> PointCloud {
-        let file = File::open(path).expect("Could not read pointcloud from file");
-        let reader = BufReader::new(file);
-        let point_data = reader
-            .lines()
-            .into_iter()
-            .map(|l| {
-                let line = l.expect("Could not read line");
-                let xyz: Vec<f64> = line.split_whitespace().map(|part| {
-                    let coord: f64 = part.parse().expect("Unable to parse coordinate");
-                    coord
-                }).collect();
-                xyz
-            })
-            .flatten()
-            .collect();
-        PointCloud::new(point_data)
-    }
-
-    pub fn write_to_file(cloud: &PointCloud, name: &str) {
-        let file = File::create(name).expect("Could not open file");
-        let mut writer = BufWriter::new(file);
-        for pt in cloud.points().outer_iter() {
-            write!(writer, "{} ", pt[[0]]).expect("Unable to write to file");
-            write!(writer, "{} ", pt[[1]]).expect("Unable to write to file");
-            write!(writer, "{}\n", pt[[2]]).expect("Unable to write to file");
-        }
-    }
-}
 
 impl PointCloud {
-    pub fn new(points: Vec<f64>) -> PointCloud {
-        let point_amount = points.len() / 3;
-        PointCloud {
-            points: Array::from_shape_vec((point_amount, 3), points)
-                .expect("Could not create ndarray from points"),
-            normals: Array::from_elem((point_amount, 3), f64::NAN),
-            planarity: Array::from_elem(point_amount, f64::NAN),
-            selection: None,
-            selected_idx: (0..point_amount).collect(),
-        }
-    }
-
-    pub fn select_from_cloud(cloud: &PointCloud, idx: &Vec<usize>) -> PointCloud {
-        let new_point_amount = idx.len() / 3;
-        PointCloud {
-            points: cloud.points.select(Axis(0), idx),
-            normals: cloud.normals.select(Axis(0), idx),
-            planarity: cloud.planarity.select(Axis(0), idx),
-            selection: None,
-            selected_idx: (0..new_point_amount).collect(),
-        }
-    }
-
     pub fn select_in_range(&mut self, cloud: &mut PointCloud, max_range: f64) {
         let now = Instant::now();
         let query = self.selection();
@@ -164,10 +187,9 @@ impl PointCloud {
         let now = Instant::now();
         let query_points = self.selection();
 
-        let point_amount = self.points.len();
         let nn = knn_search(self, query_points, neighbors);
 
-        self.normals = Array::from_elem((point_amount, 3), f64::NAN);
+        self.normals = Array::from_elem((self.point_amount(), 3), f64::NAN);
 
         for (i, idx) in self.selected_idx.iter().enumerate() {
             let mut x_nn: Array<f64, Ix2> = Array::zeros((neighbors, 3));
