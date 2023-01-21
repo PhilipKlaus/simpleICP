@@ -1,0 +1,16 @@
+[package]
+name = "simpleicp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+kdtree = "0.7.0"
+typenum = "1.16.0"
+ndarray = { version = '0.15.2', features=["rayon"] }
+ndarray-stats = "0.5.1"
+linfa-linalg = "0.1.0"
+assert_float_eq="1.1.3"
+rawpointer = "0.2.1"
+ordered-float = "3.4.0"
