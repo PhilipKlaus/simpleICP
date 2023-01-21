@@ -8,6 +8,7 @@ use crate::pointcloud::PointCloud;
 mod pointcloud;
 mod corrpts;
 mod permutation;
+mod nearest_neighbor;
 
 struct Parameters {
     max_overlap_distance: f64,

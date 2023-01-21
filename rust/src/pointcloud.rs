@@ -10,34 +10,13 @@ use linfa_linalg::eigh::{EighInto, EigSort};
 use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s, stack};
 use ndarray_stats::CorrelationExt;
 
-#[derive(Debug, PartialEq)]
-pub struct NormalRes {
-    eigenvector: Array1<f64>,
-    planarity: f64,
-}
-
-pub struct NNRes {
-    pub(crate) distance: f64,
-    pub(crate) idx: usize,
-}
-
-impl From<(f64, usize)> for NNRes {
-    fn from(value: (f64, usize)) -> Self {
-        NNRes { distance: value.0, idx: value.1 }
-    }
-}
-
-impl Display for NormalRes {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "NormalRes:\nEigenvector: {}\nPlanarity:{}", self.eigenvector, self.planarity)
-    }
-}
+use crate::nearest_neighbor::{knn_search, NNRes, NormalRes};
 
 #[derive(Default)]
 pub struct PointCloud {
     points: Array2<f64>,
     planarity: Array1<f64>,
-    pub normals: Array2<f64>,
+    normals: Array2<f64>,
     selection: Option<Box<PointCloud>>,
     selected_idx: Vec<usize>,
 }
@@ -56,6 +35,10 @@ impl PointCloud {
 
     pub fn planarity(&self) -> ArrayView<'_, f64, Ix1> {
         self.planarity.view()
+    }
+
+    pub fn normals(&self) -> ArrayView<'_, f64, Ix2> {
+        self.normals.view()
     }
 
     pub fn selection(&self) -> &PointCloud {
@@ -103,56 +86,6 @@ impl PointCloud {
             write!(writer, "{}\n", pt[[2]]).expect("Unable to write to file");
         }
     }
-
-    pub fn knn_search(
-        reference: &PointCloud,
-        query: &PointCloud,
-        k: usize,
-    ) -> Vec<Vec<NNRes>> {
-        let mut kdtree = KdTree::new(3);
-
-        for (idx, p) in reference.points().outer_iter().enumerate() {
-            kdtree.add([p[[0]], p[[1]], p[[2]]], idx).expect("Could not add point to kdtree");
-        }
-
-        let mut nn: Vec<Vec<NNRes>> = Vec::new();
-        for q in query.points().outer_iter() {
-            nn.push(
-                kdtree.nearest(&[q[[0]], q[[1]], q[[2]]], k, &squared_euclidean)
-                    .expect("Could not fetch nn for point")
-                    .iter()
-                    .map(|entry| NNRes::from((entry.0, *entry.1)))
-                    .collect()
-            );
-        }
-        nn
-    }
-
-    // Alternative implementation using ArrayViews
-    #[allow(dead_code)]
-    pub fn knn_search_e<'a>(
-        cloud_ref: &Vec<ArrayView<f64, Ix1>>,
-        cloud_query: &Vec<ArrayView<f64, Ix1>>,
-        k: usize,
-    ) -> Vec<Vec<NNRes>> {
-        let mut kdtree = KdTree::new(3);
-
-        for (idx, p) in cloud_ref.iter().enumerate() {
-            kdtree.add([p[[0]], p[[1]], p[[2]]], idx).expect("Could not add point to kdtree");
-        }
-
-        let mut nn: Vec<Vec<NNRes>> = Vec::new();
-        for query in cloud_query.iter() {
-            nn.push(
-                kdtree.nearest(&[query[[0]], query[[1]], query[[2]]], k, &squared_euclidean)
-                    .expect("Could not fetch nn for point")
-                    .iter()
-                    .map(|entry| NNRes::from((entry.0, *entry.1)))
-                    .collect()
-            );
-        }
-        nn
-    }
 }
 
 impl PointCloud {
@@ -184,7 +117,7 @@ impl PointCloud {
         let query = self.selection();
 
         // Get nearest neighbours
-        let nn = PointCloud::knn_search(cloud, query, 1);
+        let nn = knn_search(cloud, query, 1);
 
         let mut nn_iter = nn.iter();
         self.selected_idx.retain(|_| {
@@ -232,7 +165,7 @@ impl PointCloud {
         let query_points = self.selection();
 
         let point_amount = self.points.len();
-        let nn = PointCloud::knn_search(self, query_points, neighbors);
+        let nn = knn_search(self, query_points, neighbors);
 
         self.normals = Array::from_elem((point_amount, 3), f64::NAN);
 
