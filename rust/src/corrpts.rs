@@ -3,6 +3,7 @@ use std::time::Instant;
 use ndarray::{Array, Array1, Axis, Ix1};
 
 use crate::permutation::{PermuteArray, SortArray};
+use crate::point_selection::PointCloudView;
 use crate::pointcloud::{NNRes, PointCloud};
 
 // pc1 == fixed / pc2 == moved
@@ -25,13 +26,13 @@ pub fn match_point_clouds(pc1: &PointCloud, pc2: &PointCloud) -> (Array1<f64>, A
 fn dist_between_neighbors(pc1: &PointCloud, idx_pc1: &Vec<usize>, pc2: &PointCloud, neighbors: &Vec<Vec<NNRes>>) -> Array1<f64> {
     let mut dists: Array1<f64> = Array::from_elem(idx_pc1.len(), f64::NAN);
     for (idx, (p1, nn)) in idx_pc1.iter().zip(neighbors.iter()).enumerate() {
-        let x1 = pc1.points[[*p1, 0]];
-        let y1 = pc1.points[[*p1, 1]];
-        let z1 = pc1.points[[*p1, 2]];
+        let x1 = pc1.x()[[*p1, 0]];
+        let y1 = pc1.x()[[*p1, 1]];
+        let z1 = pc1.x()[[*p1, 2]];
 
-        let x2 = pc2.points[[nn[0].idx, 0]];
-        let y2 = pc2.points[[nn[0].idx, 1]];
-        let z2 = pc2.points[[nn[0].idx, 2]];
+        let x2 = pc2.x()[[nn[0].idx, 0]];
+        let y2 = pc2.x()[[nn[0].idx, 1]];
+        let z2 = pc2.x()[[nn[0].idx, 2]];
 
         let nx1 = pc1.normals[[*p1, 0]];
         let ny1 = pc1.normals[[*p1, 1]];

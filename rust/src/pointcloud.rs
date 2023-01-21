@@ -8,6 +8,7 @@ use kdtree::KdTree;
 use linfa_linalg::eigh::{EighInto, EigSort};
 use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s, stack};
 use ndarray_stats::CorrelationExt;
+
 use crate::point_selection::{PointCloudView, PointSelection};
 
 #[derive(Debug, PartialEq)]
@@ -33,10 +34,8 @@ impl Display for NormalRes {
     }
 }
 
-
-
 pub struct PointCloud {
-    pub points: Array2<f64>,
+    points: Array2<f64>,
     // Store selection state for every point
     pub normals: Array2<f64>,
     // Store normal for every point
