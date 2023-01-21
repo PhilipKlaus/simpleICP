@@ -45,12 +45,14 @@ fn main() {
         PointCloud::write_to_file(fixed.get_selected_points(), "initial_selection.xyz");
     }
 
+
     print!("Select points for correspondences in fixed point cloud ...\n");
     fixed.select_n_pts(params.correspondences);
     PointCloud::write_to_file(fixed.get_selected_points(), &*format!("select_{}_pts.xyz", params.correspondences));
-
+    /*
     println!("Estimate normals of selected points ...\n");
     fixed.estimate_normals(params.neighbors);
+    */
 
     // ToDo: Needed later on for matching
     /*
@@ -59,10 +61,13 @@ fn main() {
     let d_h: Array2<f64> = Array::from_elem((4, 4), 0.);
     */
 
+    /*
     println!("Start iterations ...\n");
     for i in 0..params.max_iterations {
         println!("Iteration {}:", i);
         let mut match_res = match_point_clouds(&fixed, &moved); // planarity, dists
         reject(&match_res.0, &mut match_res.1);
     }
+
+     */
 }

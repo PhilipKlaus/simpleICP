@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -43,6 +44,7 @@ pub struct PointCloud {
 
     pub selected: Array1<bool>,
     selection: Option<PointSelection>,
+    selected_idx: Vec<usize>,
 }
 
 impl PointCloudView for PointCloud {
@@ -156,39 +158,58 @@ impl PointCloud {
             normals: Array::from_elem((point_amount, 3), f64::NAN),
             planarity: Array::from_elem(point_amount, f64::NAN),
             selection: None,
+            selected_idx: (0..point_amount).collect(),
         }
     }
 
 
     pub fn select_in_range(&mut self, cloud: &mut PointCloud, max_range: f64) {
-        let sel_idx = self.get_idx_of_selected_points();
+        let now = Instant::now();
         let query = self.get_selected_points();
 
         // Get nearest neighbours
         let nn = PointCloud::knn_search(cloud, query, 1);
 
-        // ToDo: possible impr. compare to squared dist -> than no sqrt necessary
-        for i in 0..sel_idx.len() {
-            if f64::sqrt(nn[i][0].distance) > max_range {
-                self.selected[sel_idx[i]] = false;
-            }
-        }
+        let mut nn_iter = nn.iter();
+        self.selected_idx.retain(|_| {
+            let nn_item = nn_iter.next().unwrap();
+            nn_item[0].distance <= max_range
+        });
 
-        self.selection = Option::from(PointSelection::select_from_point_cloud(self, &self.get_idx_of_selected_points()));
+        self.selection = Option::from(PointSelection::select_from_point_cloud(self, &self.selected_idx));
+        println!("select_in_range took: {}", now.elapsed().as_millis());
     }
 
     pub fn select_n_pts(&mut self, n: usize) {
-        let sel_idx = self.get_idx_of_selected_points();
-        if n < sel_idx.len() {
-            self.selected.fill(false);
-            let dist_idx = Array::<f64, _>::linspace(0., (sel_idx.len() - 1) as f64, n);
+        let now = Instant::now();
+        // Todo: Build in check for "n"
+        if n < self.selected_idx.len() {
+            let dist_idx = Array::<f64, _>::linspace(0., (self.selected_idx.len() - 1) as f64, n);
+            let mut dist_idx_iter = dist_idx.iter();
+            let mut actual_idx = dist_idx_iter.next().unwrap().floor() as usize;
 
-            for idx in dist_idx.iter() {
-                self.selected[sel_idx[idx.floor() as usize]] = true;
-            }
+            let all_idx: Vec<usize> = (0..self.selected_idx.len()).collect();
+            let mut all_idx_iter = all_idx.iter();
 
-            self.selection = Option::from(PointSelection::select_from_point_cloud(self, &self.get_idx_of_selected_points()));
+            self.selected_idx.retain(|_| {
+                let next_idx = all_idx_iter.next().unwrap();
+                if *next_idx == actual_idx {
+                    match dist_idx_iter.next() {
+                        None => {
+                            actual_idx = usize::MAX;
+                        }
+                        Some(new_idx) => {
+                            actual_idx = new_idx.floor() as usize;
+                        }
+                    }
+                    true
+                }
+                else { false }
+            });
+
+            self.selection = Option::from(PointSelection::select_from_point_cloud(self, &self.selected_idx));
         }
+        println!("select_n_pts took: {}", now.elapsed().as_millis());
     }
 
     pub fn get_idx_of_selected_points(&self) -> Vec<usize> {
