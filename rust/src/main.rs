@@ -5,11 +5,13 @@ use std::time::Instant;
 
 use crate::corrpts::reject;
 use crate::pointcloud::PointCloud;
+use crate::rigid_body_transformation::estimate_rigid_body_transformation;
 
 mod pointcloud;
 mod corrpts;
 mod permutation;
 mod nearest_neighbor;
+mod rigid_body_transformation;
 
 struct Parameters {
     max_overlap_distance: f64,
@@ -78,6 +80,7 @@ fn main() {
         let mut dist_res = PointCloud::cloud_to_cloud_distance(&fixed.selection(), &moved.selection());
         println!("\tdist_between_neighbors took: {}[ms]", now.elapsed().as_millis());
 
+        let now = Instant::now();
         let valid_idx = reject(&fixed.selection(), &mut dist_res, params.min_planarity);
         let fixed_valid = PointCloud::select_from_cloud(fixed.selection(), &valid_idx);
 
@@ -85,6 +88,11 @@ fn main() {
         let moved_valid = PointCloud::select_from_cloud(moved.selection(), &moved_valid_idx);
         assert_eq!(fixed_valid.point_amount(), moved_valid.point_amount());
 
-        println!("\tRemaining points for rigid-body transformation: {}\n", fixed_valid.point_amount());
+        println!("\tRemaining points for rigid-body transformation: {}", fixed_valid.point_amount());
+        println!("\tRejecting and filtering took: {}[ms]", now.elapsed().as_millis());
+
+        let now = Instant::now();
+        estimate_rigid_body_transformation(&fixed_valid, &moved_valid);
+        println!("\tEstimating rigid-body transformation took: {}[ms]\n", now.elapsed().as_millis());
     }
 }

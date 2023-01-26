@@ -30,16 +30,12 @@ fn get_mad(data: &Array1<f64>, median: f64) -> f64 {
 
 // Returns valid point indices indices
 pub(crate) fn reject(cloud: &PointCloud, dist: &mut CloudToCloudDist, min_planarity: usize) -> Vec<usize> {
-    let now = Instant::now();
 
     let med = get_median(dist.dist.borrow());
     let mad = get_mad(dist.dist.borrow(), med);
     let sigmad = 1.4826 * mad;
 
     assert_eq!(cloud.point_amount(), dist.nn.len());
-
-    let p1_remaining: Vec<usize> = vec![];
-    let p2_remaining: Vec<usize> = vec![];
 
     let keep: Vec<usize> = izip!(cloud.planarity().iter(), dist.dist.iter())
         .enumerate()
@@ -51,8 +47,6 @@ pub(crate) fn reject(cloud: &PointCloud, dist: &mut CloudToCloudDist, min_planar
         })
         .collect();
 
-    assert_eq!(keep.len() > 0, true);
-    println!("\treject took: {}", now.elapsed().as_millis());
     keep
 }
 
