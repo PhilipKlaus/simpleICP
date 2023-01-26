@@ -1,9 +1,13 @@
+use std::borrow::Borrow;
+use std::iter::Filter;
+use std::num::FpCategory::Nan;
 use std::time::Instant;
 
+use itertools::izip;
 use ndarray::{Array, Array1, Axis, Ix1};
 
 use crate::permutation::{PermuteArray, SortArray};
-use crate::pointcloud::PointCloud;
+use crate::pointcloud::{CloudToCloudDist, PointCloud};
 
 fn get_median(data: &Array1<f64>) -> f64 {
     let data_copy = data.clone();
@@ -24,40 +28,32 @@ fn get_mad(data: &Array1<f64>, median: f64) -> f64 {
     get_median(&dmed)
 }
 
-pub(crate) fn reject(cloud: &PointCloud, dists: &mut Array1<f64>) {
+// Returns valid point indices indices
+pub(crate) fn reject(cloud: &PointCloud, dist: &mut CloudToCloudDist, min_planarity: usize) -> Vec<usize> {
     let now = Instant::now();
 
-    let med = get_median(dists);
-    let mad = get_mad(dists, med);
+    let med = get_median(dist.dist.borrow());
+    let mad = get_mad(dist.dist.borrow(), med);
+    let sigmad = 1.4826 * mad;
 
-    /*dists.iter()
+    assert_eq!(cloud.point_amount(), dist.nn.len());
+
+    let p1_remaining: Vec<usize> = vec![];
+    let p2_remaining: Vec<usize> = vec![];
+
+    let keep: Vec<usize> = izip!(cloud.planarity().iter(), dist.dist.iter())
         .enumerate()
-        .filter(|(idx, dist)| {
-            (abs(dists_[i] - med) > 3 * sigmad) | (planarity_[i] < min_planarity)
+        .filter(|(idx, (p, dist))| {
+            (f64::abs(**dist - med) <= 3.0 * sigmad)//(f64::abs(**dist - med) <= 3.0 * sigmad) && (**p >= min_planarity as f64)
         })
-        .collect()*/
+        .map(|(idx, _)| {
+            idx
+        })
+        .collect();
 
-    /*
-      for (int i = 0; i < dists_.size(); i++)
-        {
-        if ((abs(dists_[i] - med) > 3 * sigmad) | (planarity_[i] < min_planarity))
-        {
-          keep[i] = false;
-        }
-        }
-    */
-
-    /*let keep = dists.iter().enumerate().map(|(idx, d) | {
-        return if (abs(d - med) > 3 * sigmad) | (planarity_[i] < min_planarity) {
-            false
-        }
-        else {
-            true
-        }
-    })*/
-    //let d: Array1<bool> = array![true, false, false, true, true];
-    //let s = d.iter().filter(|x| **x).count();
-    println!("reject took: {}\n", now.elapsed().as_millis());
+    assert_eq!(keep.len() > 0, true);
+    println!("\treject took: {}", now.elapsed().as_millis());
+    keep
 }
 
 #[cfg(test)]

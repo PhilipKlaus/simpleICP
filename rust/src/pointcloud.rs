@@ -6,7 +6,12 @@ use linfa_linalg::eigh::{EighInto, EigSort};
 use ndarray::{Array, Array1, Array2, ArrayView, Axis, Ix1, Ix2, s};
 use ndarray_stats::CorrelationExt;
 
-use crate::nearest_neighbor::{knn_search, NormalRes};
+use crate::nearest_neighbor::{knn_search, NNRes, NormalRes};
+
+pub struct CloudToCloudDist {
+    pub nn: Vec<Vec<NNRes>>,
+    pub dist: Array1<f64>,
+}
 
 #[derive(Default)]
 pub struct PointCloud {
@@ -73,7 +78,7 @@ impl PointCloud {
         }
     }
 
-    pub fn cloud_to_cloud_distance(pc1: &PointCloud, pc2: &PointCloud) -> Array1<f64> {
+    pub fn cloud_to_cloud_distance(pc1: &PointCloud, pc2: &PointCloud) -> CloudToCloudDist {
         let nn_res = knn_search(pc2, pc1, 1);
         let dists: Vec<f64> = pc1.points()
             .outer_iter()
@@ -91,10 +96,12 @@ impl PointCloud {
                 let nx1 = n1[[0]];
                 let ny1 = n1[[1]];
                 let nz1 = n1[[2]];
-
                 (x2 - x1) * nx1 + (y2 - y1) * ny1 + (z2 - z1) * nz1
             }).collect();
-        Array1::from_vec(dists)
+        CloudToCloudDist {
+            nn: nn_res,
+            dist: Array1::from_vec(dists),
+        }
     }
 }
 
@@ -205,6 +212,14 @@ impl PointCloud {
             self.normals[[*idx, 1]] = normal.eigenvector[[1]];
             self.normals[[*idx, 2]] = normal.eigenvector[[2]];
             self.planarity[[*idx]] = normal.planarity;
+            // println!("nx1: {} | ny1: {} | nz1: {}", self.normals[[*idx, 0]], self.normals[[*idx, 1]], self.normals[[*idx, 2]]);
+
+        }
+
+        // If selection exists: partially update it
+        if let Some(sel) = &mut self.selection {
+            sel.normals = self.normals.select(Axis(0), &self.selected_idx);
+            sel.planarity = self.planarity.select(Axis(0), &self.selected_idx);
         }
         println!("estimate_normals took: {}", now.elapsed().as_millis());
     }

@@ -2,7 +2,8 @@
 extern crate assert_float_eq;
 
 use std::time::Instant;
-use crate::corrpts::{reject};
+
+use crate::corrpts::reject;
 use crate::pointcloud::PointCloud;
 
 mod pointcloud;
@@ -15,6 +16,19 @@ struct Parameters {
     correspondences: usize,
     neighbors: usize,
     max_iterations: usize,
+    min_planarity: usize,
+}
+
+impl Default for Parameters {
+    fn default() -> Self {
+        Parameters {
+            max_overlap_distance: 1.0,
+            correspondences: 1000,
+            neighbors: 10,
+            max_iterations: 100,
+            min_planarity: 10,
+        }
+    }
 }
 
 
@@ -22,13 +36,7 @@ fn main() {
     const FILE1: &str = "bunny1.xyz";
     const FILE2: &str = "bunny2.xyz";
 
-    let params = Parameters {
-        max_overlap_distance: 1.0,
-        correspondences: 1000,
-        neighbors: 10,
-        max_iterations: 100,
-    };
-
+    let params = Parameters::default();
     let mut fixed = PointCloud::read_from_xyz(FILE1);
     let mut moved = PointCloud::read_from_xyz(FILE2);
 
@@ -67,9 +75,16 @@ fn main() {
         println!("Iteration {}:", i);
 
         let now = Instant::now();
-        let mut dists = PointCloud::cloud_to_cloud_distance(&fixed.selection(), &moved.selection());
+        let mut dist_res = PointCloud::cloud_to_cloud_distance(&fixed.selection(), &moved.selection());
         println!("\tdist_between_neighbors took: {}[ms]", now.elapsed().as_millis());
 
-        reject(&fixed, &mut dists);
+        let valid_idx = reject(&fixed.selection(), &mut dist_res, params.min_planarity);
+        let fixed_valid = PointCloud::select_from_cloud(fixed.selection(), &valid_idx);
+
+        let moved_valid_idx: Vec<usize> = valid_idx.iter().map(|idx| dist_res.nn[*idx][0].idx).collect();
+        let moved_valid = PointCloud::select_from_cloud(moved.selection(), &moved_valid_idx);
+        assert_eq!(fixed_valid.point_amount(), moved_valid.point_amount());
+
+        println!("\tRemaining points for rigid-body transformation: {}\n", fixed_valid.point_amount());
     }
 }
