@@ -42,9 +42,6 @@ pub fn estimate_rigid_body_transformation(pc1: &PointCloud, pc2: &PointCloud) {
         });
 
     let svd = m_a.svd(true, true).expect("Could not calculate SVD");
-    print!("Size of u: {:?}", svd.0.unwrap().shape());
-    print!("Size of sigma: {:?}", svd.1.shape());
-    print!("Size of uvt: {:?}", svd.2.unwrap().shape());
 
     //let res = svd.2.unwrap().solvec(v_l);
     /*let u = x_svd.0.unwrap();
